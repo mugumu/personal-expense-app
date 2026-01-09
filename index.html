@@ -1,21 +1,273 @@
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Expense Data Store</title>
+<style>
+/* ==================== BASIC STYLES ==================== */
+body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; margin:0; padding:20px; position:relative; }
+h1 { text-align:center; color:#333; }
+form { display:flex; flex-wrap:wrap; gap:10px; justify-content:center; margin-bottom:20px; }
+input, button { padding:10px 15px; font-size:14px; border-radius:5px; border:1px solid #ccc; }
+button { cursor:pointer; background:#007bff; color:white; border:none; transition:0.3s; }
+button:hover { background:#0056b3; }
+table { width:100%; border-collapse:collapse; margin-bottom:15px; background:#fff; box-shadow:0 2px 5px rgba(0,0,0,0.1); }
+th, td { padding:12px 8px; text-align:left; }
+th { background:#007bff; color:white; font-weight:600; }
+tbody tr:nth-child(even) { background:#f9f9f9; }
+tbody tr:hover { background:#e1f0ff; }
+button.edit { background:#ffc107; color:#333; }
+button.edit:hover { background:#e0a800; }
+button.delete { background:#dc3545; color:white; }
+button.delete:hover { background:#c82333; }
+#total, .daily-total { font-weight:bold; margin:5px 0; padding:8px; background:#fff; border-radius:5px; box-shadow:0 1px 3px rgba(0,0,0,0.1); }
+.export-buttons, #savedRecords { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:15px; }
+.saved-record { background:#fff; padding:8px 12px; border-radius:5px; box-shadow:0 1px 3px rgba(0,0,0,0.1); width:100%; max-width:500px; }
+.saved-record button { margin-left:5px; margin-top:5px; }
+.record-details { margin-top:10px; display:none; border-top:1px solid #ccc; padding-top:5px; }
+.record-details table { width:100%; border-collapse:collapse; }
+.record-details th, .record-details td { border:1px solid #ccc; padding:5px; }
+#searchBox { width:100%; max-width:500px; padding:8px; margin:10px auto; display:block; border:1px solid #ccc; border-radius:5px; }
+#clearFields { position:absolute; top:20px; left:20px; background:#28a745; color:white; padding:8px 12px; border-radius:5px; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
+#cumulativeTotal { position:absolute; top:20px; right:20px; background:#ffc107; padding:8px 12px; border-radius:5px; box-shadow:0 1px 3px rgba(0,0,0,0.2); font-weight:bold; }
+#lockScreen { position:fixed; inset:0; background:#0f172a; display:flex; align-items:center; justify-content:center; z-index:9999; color:white; }
+#lockScreen input { width:80%; padding:10px; border-radius:8px; border:none; margin-bottom:10px; text-align:center; }
+#lockScreen button { width:50%; padding:10px; border-radius:8px; border:none; background:#2563eb; color:white; cursor:pointer; font-weight:bold; }
+#lockMsg { margin-top:10px; color:#f87171; font-weight:bold; text-align:center; }
+@media(max-width:600px){ form { flex-direction:column; align-items:stretch; } input, button { width:100%; } #clearFields, #cumulativeTotal { position:static; margin:5px auto; } }
+</style>
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+</head>
+<body>
+
+<!-- ===== LOCK SCREEN ===== -->
+<div id="lockScreen">
+  <div style="text-align:center; max-width:300px">
+    <h2>Enter Passcode</h2>
+    <input type="password" id="passcodeInput" placeholder="Passcode">
+    <br>
+    <button onclick="unlockApp()">Unlock</button>
+    <div id="lockMsg"></div>
+  </div>
+</div>
+
+<!-- ===== MAIN APP ===== -->
+<div class="container" style="display:none;">
+<h1>Expense Data Store</h1>
+<button id="clearFields">Clear Fields</button>
+<div id="cumulativeTotal">Total Saved Records: UGX 0.00</div>
+
+<form id="expenseForm">
+    <input type="text" id="itemName" placeholder="Item Name" required>
+    <input type="number" id="costPrice" placeholder="Cost Price" min="0" step="0.01" required>
+    <button type="submit">Add Expense</button>
+</form>
+
+<table id="expenseTable">
+    <thead>
+        <tr>
+            <th>Date & Time</th>
+            <th>Item Name</th>
+            <th>Cost Price (UGX)</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<div id="dailyTotals"></div>
+<div id="total">Overall Total: UGX 0.00</div>
+
+<div class="export-buttons">
+    <button id="exportExcel">Export to Excel</button>
+    <button id="exportPDF">Export to PDF</button>
+</div>
+
+<h3>Saved Records</h3>
+<input type="text" id="searchBox" placeholder="Search saved records by name...">
+<div id="savedRecords"></div>
+<button id="saveRecordBtn" style="margin-top:10px;">Save Record</button>
+<button id="updateRecordBtn" style="margin-top:10px; display:none;">Update Record</button>
+</div>
+
+<script>
+// ===== FIREBASE CONFIG =====
 const firebaseConfig = {
   apiKey: "AIzaSyDvuWy7oBuGVrHX2RnLAKytl0v0ZmtW0Xg",
   authDomain: "personal-expense-app-8ac75.firebaseapp.com",
+  databaseURL: "https://personal-expense-app-8ac75-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "personal-expense-app-8ac75",
-  storageBucket: "personal-expense-app-8ac75.firebasestorage.app",
+  storageBucket: "personal-expense-app-8ac75.appspot.com",
   messagingSenderId: "1075988350698",
   appId: "1:1075988350698:web:0585410781b39889e27993",
   measurementId: "G-QQNP6C23MX"
 };
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+// ===== LOCK SCREEN =====
+const lockScreen = document.getElementById('lockScreen');
+const passInput = document.getElementById('passcodeInput');
+const lockMsg = document.getElementById('lockMsg');
+const container = document.querySelector('.container');
+function unlockApp() {
+    if(passInput.value === '1975'){
+        lockScreen.style.display='none';
+        container.style.display='block';
+        initApp();
+    } else {
+        lockMsg.textContent = "Wrong Passcode!";
+    }
+}
+
+// ===== MAIN APP LOGIC =====
+function initApp() {
+const expenseForm = document.getElementById('expenseForm');
+const expenseTableBody = document.querySelector('#expenseTable tbody');
+const dailyTotalsDiv = document.getElementById('dailyTotals');
+const totalDiv = document.getElementById('total');
+const savedRecordsDiv = document.getElementById('savedRecords');
+const saveRecordBtn = document.getElementById('saveRecordBtn');
+const updateRecordBtn = document.getElementById('updateRecordBtn');
+const searchBox = document.getElementById('searchBox');
+const clearFieldsBtn = document.getElementById('clearFields');
+const cumulativeDiv = document.getElementById('cumulativeTotal');
+
+let editIndex = -1;
+let currentRecordIndex = -1;
+let expenses = [];
+let savedRecords = [];
+
+// ===== UPDATE UI =====
+function updateCumulativeTotal() {
+    let sum = savedRecords.reduce((acc, rec) => acc + rec.expenses.reduce((a,b)=>a+b.cost,0), 0);
+    cumulativeDiv.textContent = `Total Saved Records: UGX ${sum.toFixed(2)}`;
+}
+
+function updateTable() {
+    expenseTableBody.innerHTML = '';
+    let overallTotal = 0;
+    const dailySums = {};
+    expenses.forEach((exp, index) => {
+        overallTotal += exp.cost;
+        const dateOnly = exp.date.split(',')[0];
+        dailySums[dateOnly] = (dailySums[dateOnly] || 0) + exp.cost;
+        const row = document.createElement('tr');
+        row.innerHTML = `<td>${exp.date}</td><td>${exp.item}</td><td>UGX ${exp.cost.toFixed(2)}</td>
+        <td><button class="edit">Edit</button><button class="delete">Delete</button></td>`;
+        row.querySelector('.edit').addEventListener('click', ()=> {
+            document.getElementById('itemName').value = exp.item;
+            document.getElementById('costPrice').value = exp.cost;
+            editIndex = index;
+        });
+        row.querySelector('.delete').addEventListener('click', ()=> {
+            expenses.splice(index,1);
+            db.ref('expenses').set(expenses);
+        });
+        expenseTableBody.appendChild(row);
+    });
+    totalDiv.textContent = `Overall Total: UGX ${overallTotal.toFixed(2)}`;
+    dailyTotalsDiv.innerHTML = '';
+    for(const date in dailySums){
+        const div = document.createElement('div');
+        div.className='daily-total';
+        div.textContent = `Total for ${date}: UGX ${dailySums[date].toFixed(2)}`;
+        dailyTotalsDiv.appendChild(div);
+    }
+}
+
+function updateSavedRecords(filter='') {
+    savedRecordsDiv.innerHTML='';
+    savedRecords.forEach((record, index)=>{
+        if(!record.name) record.name = `Record ${index+1}`;
+        if(!record.name.toLowerCase().includes(filter.toLowerCase())) return;
+        const div = document.createElement('div');
+        div.className='saved-record';
+        div.innerHTML=`<strong>${record.name}</strong>
+            <button class="toggle">View</button>
+            <button class="editRecord">Edit</button>
+            <button class="deleteRecord">Delete</button>
+            <div class="record-details"></div>`;
+        const detailsDiv = div.querySelector('.record-details');
+
+        div.querySelector('.toggle').addEventListener('click', ()=>{
+            if(detailsDiv.style.display==='none'){
+                detailsDiv.innerHTML='<table><thead><tr><th>Date & Time</th><th>Item</th><th>Cost (UGX)</th></tr></thead><tbody>'+
+                record.expenses.map(exp=>`<tr><td>${exp.date}</td><td>${exp.item}</td><td>UGX ${exp.cost.toFixed(2)}</td></tr>`).join('')+'</tbody></table>';
+                detailsDiv.style.display='block';
+            } else { detailsDiv.style.display='none'; }
+        });
+
+        div.querySelector('.editRecord').addEventListener('click', ()=>{
+            expenses = JSON.parse(JSON.stringify(record.expenses));
+            currentRecordIndex = index;
+            updateTable();
+            updateRecordBtn.style.display='inline-block';
+            saveRecordBtn.style.display='none';
+        });
+
+        div.querySelector('.deleteRecord').addEventListener('click', ()=>{
+            if(confirm('Delete this saved record?')){
+                savedRecords.splice(index,1);
+                db.ref('savedRecords').set(savedRecords);
+            }
+        });
+
+        savedRecordsDiv.appendChild(div);
+    });
+}
+
+// ===== FIREBASE SYNC =====
+db.ref('expenses').on('value', snapshot => {
+    expenses = snapshot.val() || [];
+    updateTable();
+});
+db.ref('savedRecords').on('value', snapshot => {
+    savedRecords = snapshot.val() || [];
+    updateSavedRecords();
+    updateCumulativeTotal();
+});
+
+// ===== EVENTS =====
+expenseForm.addEventListener('submit',(e)=>{
+    e.preventDefault();
+    const item=document.getElementById('itemName').value.trim();
+    const cost=parseFloat(document.getElementById('costPrice').value);
+    if(!item || isNaN(cost)) return;
+    const date=new Date().toLocaleString();
+    if(editIndex>=0){ expenses[editIndex]={date,item,cost}; editIndex=-1; }
+    else { expenses.push({date,item,cost}); }
+    db.ref('expenses').set(expenses);
+    expenseForm.reset();
+});
+
+saveRecordBtn.addEventListener('click', ()=>{
+    const recordName = prompt("Enter record name:");
+    if(!recordName) return;
+    savedRecords.push({name:recordName, expenses:JSON.parse(JSON.stringify(expenses))});
+    db.ref('savedRecords').set(savedRecords);
+    alert("Record saved successfully!");
+});
+
+updateRecordBtn.addEventListener('click', ()=>{
+    if(currentRecordIndex>=0){
+        const recordName = prompt("Enter updated record name:", savedRecords[currentRecordIndex].name);
+        if(!recordName) return;
+        savedRecords[currentRecordIndex]={name:recordName, expenses:JSON.parse(JSON.stringify(expenses))};
+        currentRecordIndex=-1;
+        db.ref('savedRecords').set(savedRecords);
+        updateRecordBtn.style.display='none';
+        saveRecordBtn.style.display='inline-block';
+        alert("Record updated successfully!");
+    }
+});
+
+searchBox.addEventListener('input', ()=>updateSavedRecords(searchBox.value));
+clearFieldsBtn.addEventListener('click', ()=>{ expenseForm.reset(); editIndex=-1; });
+}
+</script>
+</body>
+</html>
