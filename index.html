@@ -97,7 +97,6 @@ function unlockApp() {
 // ===== MAIN APP =====
 function initApp() {
 const expenseForm = document.getElementById('expenseForm');
-const expenseTableBody = document.querySelector('#expenseTable tbody');
 const dailyTotalsDiv = document.getElementById('dailyTotals');
 const totalDiv = document.getElementById('total');
 const savedRecordsDiv = document.getElementById('savedRecords');
@@ -112,9 +111,9 @@ let savedRecords = [];
 let editIndex = -1;
 let currentRecordIndex = -1;
 
-// ===== HELPER FUNCTIONS =====
+// ===== HELPERS =====
 function updateCumulativeTotal() {
-    var sum = 0;
+    let sum = 0;
     savedRecords.forEach(r=> r.expenses.forEach(e=> sum += parseFloat(e.cost)));
     cumulativeDiv.textContent = 'Total Saved Records: UGX ' + sum.toFixed(2);
 }
@@ -128,13 +127,13 @@ function updateTable() {
     }
     const tbody = document.querySelector('#expenseTable tbody');
     tbody.innerHTML='';
-    var overallTotal = 0;
-    var dailySums = {};
+    let overallTotal = 0;
+    let dailySums = {};
     expenses.forEach((exp,i)=>{
         overallTotal += exp.cost;
-        var dateOnly = exp.date.split(',')[0];
+        let dateOnly = exp.date.split(',')[0];
         dailySums[dateOnly] = (dailySums[dateOnly] || 0) + exp.cost;
-        var row = document.createElement('tr');
+        let row = document.createElement('tr');
         row.innerHTML = `<td>${exp.date}</td><td>${exp.item}</td><td>UGX ${exp.cost.toFixed(2)}</td>
             <td><button class="edit">Edit</button><button class="delete">Delete</button></td>`;
         row.querySelector('.edit').onclick = function(){
@@ -150,8 +149,8 @@ function updateTable() {
     });
     totalDiv.textContent = 'Overall Total: UGX '+overallTotal.toFixed(2);
     dailyTotalsDiv.innerHTML='';
-    for(var date in dailySums){
-        var div = document.createElement('div');
+    for(let date in dailySums){
+        let div = document.createElement('div');
         div.className='daily-total';
         div.textContent='Total for '+date+': UGX '+dailySums[date].toFixed(2);
         dailyTotalsDiv.appendChild(div);
@@ -163,14 +162,14 @@ function updateSavedRecords(filter=''){
     savedRecords.forEach((record,i)=>{
         if(!record.name) record.name = 'Record '+(i+1);
         if(filter && !record.name.toLowerCase().includes(filter.toLowerCase())) return;
-        var div = document.createElement('div');
+        let div = document.createElement('div');
         div.className='saved-record';
         div.innerHTML = `<strong>${record.name}</strong>
             <button class="toggle">View</button>
             <button class="editRecord">Edit</button>
             <button class="deleteRecord">Delete</button>
             <div class="record-details"></div>`;
-        var detailsDiv = div.querySelector('.record-details');
+        let detailsDiv = div.querySelector('.record-details');
 
         div.querySelector('.toggle').onclick = function(){
             if(detailsDiv.style.display==='none'){
@@ -213,10 +212,10 @@ db.ref('savedRecords').on('value', function(snapshot){
 // ===== EVENTS =====
 expenseForm.onsubmit = function(e){
     e.preventDefault();
-    var item = document.getElementById('itemName').value.trim();
-    var cost = parseFloat(document.getElementById('costPrice').value);
+    let item = document.getElementById('itemName').value.trim();
+    let cost = parseFloat(document.getElementById('costPrice').value);
     if(!item || isNaN(cost)) return;
-    var date = new Date().toLocaleString();
+    let date = new Date().toLocaleString();
     if(editIndex>=0){ expenses[editIndex]={date,item,cost}; editIndex=-1; }
     else expenses.push({date,item,cost});
     db.ref('expenses').set(expenses);
@@ -224,7 +223,7 @@ expenseForm.onsubmit = function(e){
 };
 
 saveRecordBtn.onclick = function(){
-    var recordName = prompt("Enter record name:");
+    let recordName = prompt("Enter record name:");
     if(!recordName) return;
     savedRecords.push({name:recordName, expenses:JSON.parse(JSON.stringify(expenses))});
     db.ref('savedRecords').set(savedRecords);
@@ -233,7 +232,7 @@ saveRecordBtn.onclick = function(){
 
 updateRecordBtn.onclick = function(){
     if(currentRecordIndex>=0){
-        var recordName = prompt("Enter updated record name:", savedRecords[currentRecordIndex].name);
+        let recordName = prompt("Enter updated record name:", savedRecords[currentRecordIndex].name);
         if(!recordName) return;
         savedRecords[currentRecordIndex]={name:recordName, expenses:JSON.parse(JSON.stringify(expenses))};
         currentRecordIndex=-1;
@@ -247,13 +246,13 @@ updateRecordBtn.onclick = function(){
 searchBox.oninput = function(){ updateSavedRecords(searchBox.value); };
 clearFieldsBtn.onclick = function(){ expenseForm.reset(); editIndex=-1; };
 
-// ===== EXPORT =====
+// ===== EXPORT FUNCTIONS =====
 function exportToCSV(data,name='records.csv'){
-    var headers = ['Date','Item','Cost (UGX)'];
-    var csv = [headers.join(',')];
+    let headers = ['Date','Item','Cost (UGX)'];
+    let csv = [headers.join(',')];
     data.forEach(e=> csv.push([e.date,e.item,e.cost].join(',')));
-    var blob = new Blob([csv.join('\n')], {type:'text/csv'});
-    var link = document.createElement('a');
+    let blob = new Blob([csv.join('\n')], {type:'text/csv'});
+    let link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = name;
     link.click();
@@ -275,15 +274,45 @@ function exportToPDF(data,title='Expense Report'){
 }
 
 // ===== EXPORT BUTTONS =====
-var exportDiv = document.createElement('div');
+let exportDiv = document.createElement('div');
 exportDiv.className='export-buttons';
-var exportPDFBtn = document.createElement('button');
+
+let exportPDFBtn = document.createElement('button');
 exportPDFBtn.textContent='Export All PDF';
 exportPDFBtn.onclick = function(){ exportToPDF(expenses.concat(...savedRecords.map(r=>r.expenses)),'All Expenses'); };
-var exportCSVBtn = document.createElement('button');
+
+let exportCSVBtn = document.createElement('button');
 exportCSVBtn.textContent='Export All CSV';
 exportCSVBtn.onclick = function(){ exportToCSV(expenses.concat(...savedRecords.map(r=>r.expenses)),'all_expenses.csv'); };
-exportDiv.append(exportPDFBtn,exportCSVBtn);
+
+// LAST 30 DAYS EXPORT
+let export30PDFBtn = document.createElement('button');
+export30PDFBtn.textContent='Export Last 30 Days PDF';
+export30PDFBtn.onclick = function(){
+    let now = new Date();
+    let past30 = new Date(); past30.setDate(now.getDate()-30);
+    let monthlyData = [];
+    expenses.concat(...savedRecords.map(r=>r.expenses)).forEach(e=>{
+        let ed = new Date(e.date);
+        if(ed >= past30 && ed <= now) monthlyData.push(e);
+    });
+    exportToPDF(monthlyData,'Last_30_Days_Report');
+};
+
+let export30CSVBtn = document.createElement('button');
+export30CSVBtn.textContent='Export Last 30 Days CSV';
+export30CSVBtn.onclick = function(){
+    let now = new Date();
+    let past30 = new Date(); past30.setDate(now.getDate()-30);
+    let monthlyData = [];
+    expenses.concat(...savedRecords.map(r=>r.expenses)).forEach(e=>{
+        let ed = new Date(e.date);
+        if(ed >= past30 && ed <= now) monthlyData.push(e);
+    });
+    exportToCSV(monthlyData,'last_30_days.csv');
+};
+
+exportDiv.append(exportPDFBtn,exportCSVBtn,export30PDFBtn,export30CSVBtn);
 container.prepend(exportDiv);
 
 }
