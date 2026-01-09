@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <title>Expense Data Store</title>
 <style>
-/* ==================== BASIC STYLES ==================== */
 body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; margin:0; padding:20px; position:relative; }
 h1 { text-align:center; color:#333; }
 form { display:flex; flex-wrap:wrap; gap:10px; justify-content:center; margin-bottom:20px; }
@@ -36,64 +35,12 @@ button.delete:hover { background:#c82333; }
 #lockMsg { margin-top:10px; color:#f87171; font-weight:bold; text-align:center; }
 @media(max-width:600px){ form { flex-direction:column; align-items:stretch; } input, button { width:100%; } #clearFields, #cumulativeTotal { position:static; margin:5px auto; } }
 </style>
-
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-</head>
-<body>
+<script type="module">
+// ===== IMPORT FIREBASE MODULAR SDK =====
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
 
-<!-- ===== LOCK SCREEN ===== -->
-<div id="lockScreen">
-  <div style="text-align:center; max-width:300px">
-    <h2>Enter Passcode</h2>
-    <input type="password" id="passcodeInput" placeholder="Passcode">
-    <br>
-    <button onclick="unlockApp()">Unlock</button>
-    <div id="lockMsg"></div>
-  </div>
-</div>
-
-<!-- ===== MAIN APP ===== -->
-<div class="container" style="display:none;">
-<h1>Expense Data Store</h1>
-<button id="clearFields">Clear Fields</button>
-<div id="cumulativeTotal">Total Saved Records: UGX 0.00</div>
-
-<form id="expenseForm">
-    <input type="text" id="itemName" placeholder="Item Name" required>
-    <input type="number" id="costPrice" placeholder="Cost Price" min="0" step="0.01" required>
-    <button type="submit">Add Expense</button>
-</form>
-
-<table id="expenseTable">
-    <thead>
-        <tr>
-            <th>Date & Time</th>
-            <th>Item Name</th>
-            <th>Cost Price (UGX)</th>
-            <th>Actions</th>
-        </tr>
-    </thead>
-    <tbody></tbody>
-</table>
-
-<div id="dailyTotals"></div>
-<div id="total">Overall Total: UGX 0.00</div>
-
-<div class="export-buttons">
-    <button id="exportExcel">Export to Excel</button>
-    <button id="exportPDF">Export to PDF</button>
-</div>
-
-<h3>Saved Records</h3>
-<input type="text" id="searchBox" placeholder="Search saved records by name...">
-<div id="savedRecords"></div>
-<button id="saveRecordBtn" style="margin-top:10px;">Save Record</button>
-<button id="updateRecordBtn" style="margin-top:10px; display:none;">Update Record</button>
-</div>
-
-<script>
 // ===== FIREBASE CONFIG =====
 const firebaseConfig = {
   apiKey: "AIzaSyDvuWy7oBuGVrHX2RnLAKytl0v0ZmtW0Xg",
@@ -105,14 +52,15 @@ const firebaseConfig = {
   appId: "1:1075988350698:web:0585410781b39889e27993",
   measurementId: "G-QQNP6C23MX"
 };
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
 
 // ===== LOCK SCREEN =====
 const lockScreen = document.getElementById('lockScreen');
+const container = document.querySelector('.container');
 const passInput = document.getElementById('passcodeInput');
 const lockMsg = document.getElementById('lockMsg');
-const container = document.querySelector('.container');
 function unlockApp() {
     if(passInput.value === '1975'){
         lockScreen.style.display='none';
@@ -123,7 +71,7 @@ function unlockApp() {
     }
 }
 
-// ===== MAIN APP LOGIC =====
+// ===== MAIN APP =====
 function initApp() {
 const expenseForm = document.getElementById('expenseForm');
 const expenseTableBody = document.querySelector('#expenseTable tbody');
@@ -136,10 +84,10 @@ const searchBox = document.getElementById('searchBox');
 const clearFieldsBtn = document.getElementById('clearFields');
 const cumulativeDiv = document.getElementById('cumulativeTotal');
 
-let editIndex = -1;
-let currentRecordIndex = -1;
 let expenses = [];
 let savedRecords = [];
+let editIndex = -1;
+let currentRecordIndex = -1;
 
 // ===== UPDATE UI =====
 function updateCumulativeTotal() {
@@ -151,42 +99,42 @@ function updateTable() {
     expenseTableBody.innerHTML = '';
     let overallTotal = 0;
     const dailySums = {};
-    expenses.forEach((exp, index) => {
+    expenses.forEach((exp,index)=>{
         overallTotal += exp.cost;
         const dateOnly = exp.date.split(',')[0];
         dailySums[dateOnly] = (dailySums[dateOnly] || 0) + exp.cost;
         const row = document.createElement('tr');
         row.innerHTML = `<td>${exp.date}</td><td>${exp.item}</td><td>UGX ${exp.cost.toFixed(2)}</td>
-        <td><button class="edit">Edit</button><button class="delete">Delete</button></td>`;
-        row.querySelector('.edit').addEventListener('click', ()=> {
+            <td><button class="edit">Edit</button><button class="delete">Delete</button></td>`;
+        row.querySelector('.edit').addEventListener('click', ()=>{
             document.getElementById('itemName').value = exp.item;
             document.getElementById('costPrice').value = exp.cost;
             editIndex = index;
         });
-        row.querySelector('.delete').addEventListener('click', ()=> {
+        row.querySelector('.delete').addEventListener('click', ()=>{
             expenses.splice(index,1);
-            db.ref('expenses').set(expenses);
+            set(ref(db,'expenses'), expenses);
         });
         expenseTableBody.appendChild(row);
     });
     totalDiv.textContent = `Overall Total: UGX ${overallTotal.toFixed(2)}`;
-    dailyTotalsDiv.innerHTML = '';
+    dailyTotalsDiv.innerHTML='';
     for(const date in dailySums){
         const div = document.createElement('div');
         div.className='daily-total';
-        div.textContent = `Total for ${date}: UGX ${dailySums[date].toFixed(2)}`;
+        div.textContent=`Total for ${date}: UGX ${dailySums[date].toFixed(2)}`;
         dailyTotalsDiv.appendChild(div);
     }
 }
 
-function updateSavedRecords(filter='') {
+function updateSavedRecords(filter=''){
     savedRecordsDiv.innerHTML='';
-    savedRecords.forEach((record, index)=>{
+    savedRecords.forEach((record,index)=>{
         if(!record.name) record.name = `Record ${index+1}`;
         if(!record.name.toLowerCase().includes(filter.toLowerCase())) return;
         const div = document.createElement('div');
         div.className='saved-record';
-        div.innerHTML=`<strong>${record.name}</strong>
+        div.innerHTML = `<strong>${record.name}</strong>
             <button class="toggle">View</button>
             <button class="editRecord">Edit</button>
             <button class="deleteRecord">Delete</button>
@@ -196,9 +144,10 @@ function updateSavedRecords(filter='') {
         div.querySelector('.toggle').addEventListener('click', ()=>{
             if(detailsDiv.style.display==='none'){
                 detailsDiv.innerHTML='<table><thead><tr><th>Date & Time</th><th>Item</th><th>Cost (UGX)</th></tr></thead><tbody>'+
-                record.expenses.map(exp=>`<tr><td>${exp.date}</td><td>${exp.item}</td><td>UGX ${exp.cost.toFixed(2)}</td></tr>`).join('')+'</tbody></table>';
+                    record.expenses.map(exp=>`<tr><td>${exp.date}</td><td>${exp.item}</td><td>UGX ${exp.cost.toFixed(2)}</td></tr>`).join('')+
+                    '</tbody></table>';
                 detailsDiv.style.display='block';
-            } else { detailsDiv.style.display='none'; }
+            } else detailsDiv.style.display='none';
         });
 
         div.querySelector('.editRecord').addEventListener('click', ()=>{
@@ -212,7 +161,7 @@ function updateSavedRecords(filter='') {
         div.querySelector('.deleteRecord').addEventListener('click', ()=>{
             if(confirm('Delete this saved record?')){
                 savedRecords.splice(index,1);
-                db.ref('savedRecords').set(savedRecords);
+                set(ref(db,'savedRecords'), savedRecords);
             }
         });
 
@@ -221,26 +170,26 @@ function updateSavedRecords(filter='') {
 }
 
 // ===== FIREBASE SYNC =====
-db.ref('expenses').on('value', snapshot => {
+onValue(ref(db,'expenses'), snapshot=>{
     expenses = snapshot.val() || [];
     updateTable();
 });
-db.ref('savedRecords').on('value', snapshot => {
+onValue(ref(db,'savedRecords'), snapshot=>{
     savedRecords = snapshot.val() || [];
     updateSavedRecords();
     updateCumulativeTotal();
 });
 
 // ===== EVENTS =====
-expenseForm.addEventListener('submit',(e)=>{
+expenseForm.addEventListener('submit', (e)=>{
     e.preventDefault();
-    const item=document.getElementById('itemName').value.trim();
-    const cost=parseFloat(document.getElementById('costPrice').value);
+    const item = document.getElementById('itemName').value.trim();
+    const cost = parseFloat(document.getElementById('costPrice').value);
     if(!item || isNaN(cost)) return;
-    const date=new Date().toLocaleString();
+    const date = new Date().toLocaleString();
     if(editIndex>=0){ expenses[editIndex]={date,item,cost}; editIndex=-1; }
-    else { expenses.push({date,item,cost}); }
-    db.ref('expenses').set(expenses);
+    else expenses.push({date,item,cost});
+    set(ref(db,'expenses'), expenses);
     expenseForm.reset();
 });
 
@@ -248,7 +197,7 @@ saveRecordBtn.addEventListener('click', ()=>{
     const recordName = prompt("Enter record name:");
     if(!recordName) return;
     savedRecords.push({name:recordName, expenses:JSON.parse(JSON.stringify(expenses))});
-    db.ref('savedRecords').set(savedRecords);
+    set(ref(db,'savedRecords'), savedRecords);
     alert("Record saved successfully!");
 });
 
@@ -258,7 +207,7 @@ updateRecordBtn.addEventListener('click', ()=>{
         if(!recordName) return;
         savedRecords[currentRecordIndex]={name:recordName, expenses:JSON.parse(JSON.stringify(expenses))};
         currentRecordIndex=-1;
-        db.ref('savedRecords').set(savedRecords);
+        set(ref(db,'savedRecords'), savedRecords);
         updateRecordBtn.style.display='none';
         saveRecordBtn.style.display='inline-block';
         alert("Record updated successfully!");
