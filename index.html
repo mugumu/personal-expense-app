@@ -52,7 +52,6 @@ const firebaseConfig = {
   appId: "1:1075988350698:web:0585410781b39889e27993",
   measurementId: "G-QQNP6C23MX"
 };
-
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
@@ -216,6 +215,75 @@ updateRecordBtn.addEventListener('click', ()=>{
 
 searchBox.addEventListener('input', ()=>updateSavedRecords(searchBox.value));
 clearFieldsBtn.addEventListener('click', ()=>{ expenseForm.reset(); editIndex=-1; });
+
+// ===== EXPORT FUNCTIONS =====
+function exportToCSV(data,name='records.csv'){
+    const headers = ['Date','Item','Cost (UGX)'];
+    let csv = [headers.join(',')];
+    data.forEach(exp=>{
+        csv.push([exp.date,exp.item,exp.cost].join(','));
+    });
+    const blob = new Blob([csv.join('\n')], {type:'text/csv'});
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = name;
+    link.click();
+}
+
+function exportToPDF(data,title='Expense Report'){
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text(title,14,20);
+    let y=30;
+    doc.setFontSize(12);
+    data.forEach(exp=>{
+        doc.text(`${exp.date} | ${exp.item} | UGX ${exp.cost.toFixed(2)}`,14,y);
+        y+=8;
+        if(y>270){ doc.addPage(); y=20; }
+    });
+    doc.save(`${title}.pdf`);
+}
+
+// ===== BUTTONS =====
+const exportPDFBtn = document.createElement('button');
+exportPDFBtn.textContent='Export All PDF';
+exportPDFBtn.onclick = ()=>exportToPDF(expenses.concat(...savedRecords.map(r=>r.expenses)),'All Expenses');
+const exportCSVBtn = document.createElement('button');
+exportCSVBtn.textContent='Export All CSV';
+exportCSVBtn.onclick = ()=>exportToCSV(expenses.concat(...savedRecords.map(r=>r.expenses)),'all_expenses.csv');
+
+// Monthly 30-day report
+const exportMonthlyPDFBtn = document.createElement('button');
+exportMonthlyPDFBtn.textContent='Export Last 30 Days PDF';
+exportMonthlyPDFBtn.onclick = ()=>{
+    const now = new Date();
+    const past30 = new Date(); past30.setDate(now.getDate()-30);
+    const monthlyData = [];
+    expenses.concat(...savedRecords.map(r=>r.expenses)).forEach(exp=>{
+        const expDate = new Date(exp.date);
+        if(expDate>=past30 && expDate<=now) monthlyData.push(exp);
+    });
+    exportToPDF(monthlyData,'Last_30_Days_Report');
+};
+const exportMonthlyCSVBtn = document.createElement('button');
+exportMonthlyCSVBtn.textContent='Export Last 30 Days CSV';
+exportMonthlyCSVBtn.onclick = ()=>{
+    const now = new Date();
+    const past30 = new Date(); past30.setDate(now.getDate()-30);
+    const monthlyData = [];
+    expenses.concat(...savedRecords.map(r=>r.expenses)).forEach(exp=>{
+        const expDate = new Date(exp.date);
+        if(expDate>=past30 && expDate<=now) monthlyData.push(exp);
+    });
+    exportToCSV(monthlyData,'last_30_days.csv');
+};
+
+const exportDiv = document.createElement('div');
+exportDiv.className='export-buttons';
+exportDiv.append(exportPDFBtn,exportCSVBtn,exportMonthlyPDFBtn,exportMonthlyCSVBtn);
+document.querySelector('.container').prepend(exportDiv);
+
 }
 </script>
 </body>
